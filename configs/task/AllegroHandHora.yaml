@@ -1,0 +1,121 @@
+# Used for UniDexGrasp2 + HORA Integration (Aligned with Uni Reward Logic)
+name: AllegroHandHora
+physics_engine: ${..physics_engine}
+on_evaluation: False
+
+env:
+  # --- 核心维度设置 ---
+  # [关键修正] 默认改为 ，防止显存 OOM (Out of Memory)
+  numEnvs: ${resolve_default:1048576,${...num_envs}} 
+  numObservations: 64  
+  numActions: 22       
+  envSpacing: 0.75     
+  episodeLength: 240   
+  enableDebugVis: False 
+  aggregateMode: 1     
+
+  # --- 控制器参数 ---
+  controller:
+    torque_control: True 
+    controlFrequencyInv: 4 # 仿真 240Hz / 4 = 60Hz 控制频率
+    pgain: 3.0             
+    dgain: 0.1             
+
+  # --- 关键逻辑开关 ---
+  genGrasps: False         
+  clipObservations: 5.0
+  clipActions: 1.0
+  
+  # 重置阈值：球掉落到桌面以下 (-0.01m) 即重置
+  reset_height_threshold: -0.01 
+  grasp_cache_name: '' 
+
+  # --- 随机化干扰 ---
+  forceScale: 0.0          
+  randomForceProbScalar: 0.0
+  forceDecay: 0.9
+  forceDecayInterval: 0.08
+
+  # --- HORA 特有配置 ---
+  hora:
+    propHistoryLen: 30 
+    privInfoDim: 9     
+
+  # --- 奖励权重 (完全对齐 UniDexGrasp 官方逻辑) ---
+  reward:
+    # 按照 Uni 论文 逻辑：大幅强化 Reach 和 Lift
+    w_gq: 0.1            # 关节姿态正则
+    w_gt: 0.6            # 手掌趋近物体
+    w_r: 1.5             # 指尖触碰/包围奖励 (核心引导)
+    w_l: 10.0            # 抬升奖励 (权重最高，强制克服重力)
+    w_m: 5.0             # 移动奖励
+    w_b: 20.0            # 成功 Bonus (离地达标大奖)
+
+    # 旧版兼容 (全部置 0 以防干扰)
+    angvelClipMin: -0.5
+    angvelClipMax: 0.5
+    rotateRewardScale: 0.0
+    objLinvelPenaltyScale: 0.0
+    poseDiffPenaltyScale: 0.0
+    torquePenaltyScale: 0.0
+    workPenaltyScale: 0.0
+
+  baseObjScale: 0.8
+  
+  # --- 域随机化 (Domain Randomization) ---
+  randomization:
+    randomizeMass: True
+    randomizeMassLower: 0.02
+    randomizeMassUpper: 0.25
+    randomizeCOM: True
+    randomizeCOMLower: -0.01
+    randomizeCOMUpper: 0.01
+    randomizeFriction: True
+    randomizeFrictionLower: 0.3
+    randomizeFrictionUpper: 3.0
+    randomizeScale: False    # [建议] 抓球初期关闭缩放，固定尺寸更容易练成
+    randomizePDGains: True
+    randomizePGainLower: 0.8
+    randomizePGainUpper: 1.2
+    randomizeDGainLower: 0.8
+    randomizeDGainUpper: 1.2
+    scaleListInit: True
+    randomizeScaleList: [0.7, 0.75, 0.8, 0.85]
+    jointNoiseScale: 0.02
+
+  # --- 特权信息开关 ---
+  privInfo:
+    enableObjPos: True
+    enableObjScale: True
+    enableObjMass: True
+    enableObjCOM: True
+    enableObjFriction: True
+
+  # --- 资产设置 ---
+  object:
+    type: 'simple_tennis_ball' 
+    sampleProb: [1.0]
+
+  asset:
+    handAsset: 'assets/allegro/allegro_internal.urdf'
+
+  enableCameraSensors: False
+
+# --- 物理引擎配置 ---
+sim:
+  dt: 0.004166  # 240Hz 采样率 (Uni 标准)
+  substeps: 2
+  up_axis: 'z'
+  use_gpu_pipeline: ${eq:${...pipeline},'gpu'}
+  gravity: [0.0, 0.0, -9.81]
+  physx:
+    num_threads: ${....num_threads}
+    solver_type: 1 # TGS 求解器 (稳定抓取必备)
+    use_gpu: ${contains:'cuda',${....sim_device}}
+    num_position_iterations: 8
+    num_velocity_iterations: 0
+    max_gpu_contact_pairs: 8388608
+    num_subscenes: ${....num_subscenes}
+    contact_offset: 0.002
+    rest_offset: 0.0
+    contact_collection: 2
